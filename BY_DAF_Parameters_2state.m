@@ -114,3 +114,117 @@ end
 
 [k0m,k1m,A0m,A1m,A2m,zbarm] = solve_param_div(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma, ...
         phi,k0,k1,A0,A1,A2,phi_d,mu_d);
+
+%% LOG-LINEARIZATION
+function [sigma2_grid] = simple_sigma2_grid(Ns2,sigma)
+    sigma2_min=0.5*sigma^2;
+    sigma2_max=2*sigma^2;
+    sigma2_grid=linspace(sigma2_min,sigma2_max,Ns2);
+end
+
+function [x_grid] = simple_x_grid(Nx,phi_e,sigma,rho)
+    std_x=sqrt((phi_e^2*sigma^2)/(1-rho^2));
+    x_min=-4*std_x;
+    x_max=4*std_x;
+    x_grid=linspace(x_min,x_max,Nx);
+end
+
+function [zt] = function_log_zt(sigma2_grid,x_grid,A0,A1,A2)
+    [SIGMA2,X]=ndgrid(sigma2_grid,x_grid);
+    zt=A0+A1.*X+A2.*SIGMA2;
+end
+
+Ns2=50;
+Nx=50;
+[sigma2_grid]=simple_sigma2_grid(Ns2,sigma);
+[x_grid]=simple_x_grid(Nx,phi_e,sigma,rho);
+[zt] = function_log_zt(sigma2_grid,x_grid,A0,A1,A2);
+
+figure(1)
+surf(x_grid,sigma2_grid,zt)
+xlabel('x_t'); ylabel('\sigma_t^2'); zlabel('z_t')
+saveas(figure(1),'figure1.png')
+
+function [ztm] = function_log_ztm(sigma2_grid,x_grid,A0m,A1m,A2m)
+    [SIGMA2,X]=ndgrid(sigma2_grid,x_grid);
+    ztm=A0m+A1m.*X+A2m.*SIGMA2;
+end
+
+[ztm] = function_log_ztm(sigma2_grid,x_grid,A0m,A1m,A2m);
+
+figure(2)
+surf(x_grid,sigma2_grid,ztm)
+xlabel('x_t'); ylabel('\sigma_t^2'); zlabel('z_{m,t}')
+saveas(figure(2),'figure2.png')
+
+function [rf] = function_rf(beta,mu,psi,theta,k1,A1,A2,sigma_w,x_grid,sigma2_grid,phi_e)
+    [SIGMA2,X]=ndgrid(sigma2_grid,x_grid);
+    rf=-log(beta)+(1/psi)*mu+((theta-1)/2)*(k1*A2)^2*sigma_w^2+(1/psi)*X+ ...
+        0.5*(theta-1-theta/psi^2)*SIGMA2+((theta-1)/2)*(k1*A1*phi_e)^2*SIGMA2;
+end
+
+[rf] = function_rf(beta,mu,psi,theta,k1,A1,A2,sigma_w,x_grid,sigma2_grid,phi_e);
+
+figure(3)
+surf(x_grid,sigma2_grid,rf)
+xlabel('x_t'); ylabel('\sigma_t^2'); zlabel('r_f')
+saveas(figure(3),'figure3.png')
+
+%% IRFs
+
+function [x,s2,diff_z,diff_zm] = function_irf_z_zm(T,x0,sigma20,rho,phi_e,nu1,sigma,sigma_w, ...
+                        A0,A1,A2,A0m,A1m,A2m,shockType)
+    shockSize=1;
+    x=zeros(T+1,1);
+    s2=zeros(T+1,1);
+    x(1)=x0;
+    s2(1)=sigma20;
+    eps=zeros(T,1);
+    omg=zeros(T,1);
+
+    if strcmpi(shockType,'epsilon')
+        eps(1)=shockSize;
+    elseif strcmpi(shockType,'omega')
+        omg(1)=shockSize;
+    else
+        error('shockType must be ''epsilon'' or ''omega');
+    end
+
+    for t=1:T
+        x(t+1)=rho*x(t)+phi_e*sqrt(s2(t))*eps(t);
+        s2(t+1)=sigma^2+nu1*(s2(t)-sigma^2)+sigma_w*omg(t);
+        s2(t+1)=max(s2(t+1),0);
+    end
+
+    z=A0+A1.*x+A2.*s2;
+    zm=A0m+A1m.*x+A2m.*s2;
+    z_ss= A0+A2*sigma^2;
+    zm_ss=A0m+A2m*sigma^2;
+    diff_z=z-z_ss;
+    diff_zm=zm-zm_ss;
+end
+
+T=250;
+t=(1:T)';
+x_ss=0; % Unconditional expectation of x_t
+sigma2_ss=sigma^2; % Unconditional expectation of sigma_t^2
+
+[x_eps,s2_eps,diff_z_eps,diff_zm_eps] = function_irf_z_zm(T,x_ss,sigma2_ss,rho,phi_e,nu1,sigma,sigma_w, ...
+                   A0,A1,A2,A0m,A1m,A2m,"epsilon");
+
+[x_omega,s2_omega,diff_z_omega,diff_zm_omega] = function_irf_z_zm(T,x_ss,sigma2_ss,rho,phi_e,nu1,sigma,sigma_w, ...
+                   A0,A1,A2,A0m,A1m,A2m,"omega");
+
+figure(4)
+plot(t,diff_z_eps(2:end),t,diff_zm_eps(2:end),'LineWidth',2);
+grid on;xlabel('t');ylabel('Difference w.r.t. ss');
+legend('\Delta z_t (epsilon shock)','\Delta z_{m,t} (epsilon shock)','Location','Best');
+title('IRFs to \epsilon shock');
+saveas(figure(4),'figure4.png')
+
+figure(5)
+plot(t,diff_z_omega(2:end),t,diff_zm_omega(2:end),'LineWidth',2);
+grid on;xlabel('t');ylabel('Difference w.r.t. ss');
+legend('\Delta z_t (omega shock)','\Delta z_{m,t} (omega shock)','Location','Best');
+title('IRFs to \omega shock');
+saveas(figure(5),'figure5.png')
