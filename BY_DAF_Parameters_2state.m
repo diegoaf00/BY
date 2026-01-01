@@ -1,7 +1,6 @@
 %DIEGO ALVAREZ FLORES
-%BY REPLICATION
-%FIXED POINT METHOD
-%DECEMBER, 2025
+%BY REPLICATION: TWO STATE VARIABLES
+%JANUARY 2026
 
 clear;
 clc;
@@ -21,41 +20,41 @@ phi=3;
 mu_d=0.0015;
 phi_d=4.5;
 
-%% EQUATIONS (C0NSUMPTION)
-function [k0] = function_k0(zbar,k1)
+%% EQUATIONS FOR FIXED POINT METHOD (C0NSUMPTION)
+function [k0] = function2_k0(zbar,k1)
     k0=log(exp(zbar)+1)-k1*zbar;
 end
 
-function [k1] = function_k1(zbar)
+function [k1] = function2_k1(zbar)
     k1=exp(zbar)/(exp(zbar)+1);
 end
 
-function [A1] = function_A1(psi,k1,rho)
+function [A1] = function2_A1(psi,k1,rho)
     A1=(1-1/psi)/(1-k1*rho);
 end
 
-function [A2] = function_A2(theta,psi,k1,A1,phi_e,nu1)
+function [A2] = function2_A2(theta,psi,k1,A1,phi_e,nu1)
     A2=0.5*((theta-theta/psi)^2+(theta*k1*A1*phi_e)^2)/(theta*(1-k1*nu1));
 end
 
-function [A0] = function_A0(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma)
+function [A0] = function2_A0(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma)
     A0=(log(beta)+mu*(1-1/psi)+k0+k1*A2*sigma^2*(1-nu1)+0.5*sigma_w^2*theta*(k1*A2)^2)/(1-k1);
 end
 
-%% FIXED-POINT (C0NSUMPTION)
-function [k0,k1,A0,A1,A2,zbar] = solve_param_cons(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma)
+%% FIXED-POINT METHOD (C0NSUMPTION)
+function [k0,k1,A0,A1,A2,zbar] = solve_param_cons2(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma)
     zbar_init=0;
     max_iter=1000;
     terminate=0;
     crit=1e-9; 
     iter=1;
     while (terminate==0 & iter<max_iter)
-        k1 = function_k1(zbar_init);
-        k0 = function_k0(zbar_init,k1);
-        A1 = function_A1(psi,k1,rho);
-        A2 = function_A2(theta,psi,k1,A1,phi_e,nu1);
-        A0 = function_A0(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma);
-        zbar = A0+A2*sigma^2;
+        k1 = function2_k1(zbar_init);
+        k0 = function2_k0(zbar_init,k1);
+        A1 = function2_A1(psi,k1,rho);
+        A2 = function2_A2(theta,psi,k1,A1,phi_e,nu1);
+        A0 = function2_A0(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma);
+        zbar = A0+A2*sigma^2; % Unconditional expectation of z_t
         if abs(zbar-zbar_init)<crit
             terminate=1;
         end        
@@ -64,33 +63,33 @@ function [k0,k1,A0,A1,A2,zbar] = solve_param_cons(beta,mu,psi,sigma_w,nu1,theta,
     end
 end
 
-[k0,k1,A0,A1,A2,zbar] = solve_param_cons(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma);
+[k0,k1,A0,A1,A2,zbar] = solve_param_cons2(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma);
 
-%% EQUATIONS (DIVIDEND)
-function [k0m] = function_k0m(zbarm,k1m)
+%% EQUATIONS FOR FIXED POINT METHOD (DIVIDEND)
+function [k0m] = function2_k0m(zbarm,k1m)
     k0m=log(exp(zbarm)+1)-k1m*zbarm;
 end
 
-function [k1m] = function_k1m(zbarm)
+function [k1m] = function2_k1m(zbarm)
     k1m=exp(zbarm)/(exp(zbarm)+1);
 end
 
-function [A1m] = function_A1m(psi,k1m,rho,phi)
+function [A1m] = function2_A1m(psi,k1m,rho,phi)
     A1m=(phi-1/psi)/(1-k1m*rho);
 end
 
-function [A2m] = function_A2m(theta,psi,k1,A1,phi_e,nu1,A2,k1m,A1m,phi_d)
+function [A2m] = function2_A2m(theta,psi,k1,A1,phi_e,nu1,A2,k1m,A1m,phi_d)
     A2m = (A2*(1-theta)*(1-k1*nu1)+0.5*((theta-1-theta/psi)^2 ...
         +((theta-1)*k1*A1*phi_e+k1m*A1m*phi_e)^2+phi_d^2))/(1-k1m*nu1);
 end
 
-function [A0m] = function_A0m(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma,A0,k0m,k1m,A2m,mu_d)
+function [A0m] = function2_A0m(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma,A0,k0m,k1m,A2m,mu_d)
     A0m = (theta*log(beta)+mu*(theta-1-theta/psi)+(theta-1)*(k0+A0*(k1-1))+(theta-1)*k1*A2*sigma^2*(1-nu1) ...
         +k0m+k1m*A2m*sigma^2*(1-nu1)+mu_d+0.5*sigma_w^2*((theta-1)*k1*A2+k1m*A2m)^2)/(1-k1m);
 end
 
-%% FIXED-POINT (DIVIDEND)
-function [k0m,k1m,A0m,A1m,A2m,zbarm] = solve_param_div(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma, ...
+%% FIXED-POINT METHOD (DIVIDEND)
+function [k0m,k1m,A0m,A1m,A2m,zbarm] = solve_param_div2(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma, ...
         phi,k0,k1,A0,A1,A2,phi_d,mu_d)
     zbarm_init=0;
     max_iter=1000;
@@ -98,12 +97,12 @@ function [k0m,k1m,A0m,A1m,A2m,zbarm] = solve_param_div(beta,mu,psi,sigma_w,nu1,t
     crit=1e-9; 
     iter=1;
     while (terminate==0 & iter<max_iter)
-        k1m = function_k1m(zbarm_init);
-        k0m = function_k0m(zbarm_init,k1m);
-        A1m = function_A1m(psi,k1m,rho,phi);
-        A2m = function_A2m(theta,psi,k1,A1,phi_e,nu1,A2,k1m,A1m,phi_d);
-        A0m = function_A0m(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma,A0,k0m,k1m,A2m,mu_d);
-        zbarm = A0m+A2m*sigma^2;
+        k1m = function2_k1m(zbarm_init);
+        k0m = function2_k0m(zbarm_init,k1m);
+        A1m = function2_A1m(psi,k1m,rho,phi);
+        A2m = function2_A2m(theta,psi,k1,A1,phi_e,nu1,A2,k1m,A1m,phi_d);
+        A0m = function2_A0m(beta,mu,psi,k0,k1,A2,sigma_w,nu1,theta,sigma,A0,k0m,k1m,A2m,mu_d);
+        zbarm = A0m+A2m*sigma^2; % Unconditional expectation of z_{m,t}
         if abs(zbarm-zbarm_init)<crit
             terminate=1;
         end        
@@ -112,67 +111,73 @@ function [k0m,k1m,A0m,A1m,A2m,zbarm] = solve_param_div(beta,mu,psi,sigma_w,nu1,t
     end
 end
 
-[k0m,k1m,A0m,A1m,A2m,zbarm] = solve_param_div(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma, ...
+[k0m,k1m,A0m,A1m,A2m,zbarm] = solve_param_div2(beta,mu,psi,sigma_w,nu1,theta,rho,phi_e,sigma, ...
         phi,k0,k1,A0,A1,A2,phi_d,mu_d);
 
-%% LOG-LINEARIZATION
-function [sigma2_grid] = simple_sigma2_grid(Ns2,sigma)
-    sigma2_min=0.5*sigma^2;
-    sigma2_max=2*sigma^2;
+%% LOG-LINEARIZATION: POLICY FUNCTIONS
+
+% A simple grid for sigma^2_t
+function [sigma2_grid] = simple_sigma2_grid(Ns2,sigma,sigma_w,nu1)
+    std_sigma2=sqrt(sigma_w^2/(1-nu1^2)); % Unconditional standard deviation of sigma^2_t
+    sigma2_min=max(1e-9,sigma^2-4*std_sigma2);
+    sigma2_max=sigma^2+4*std_sigma2;
     sigma2_grid=linspace(sigma2_min,sigma2_max,Ns2);
 end
 
+% A simple grid for x_t
 function [x_grid] = simple_x_grid(Nx,phi_e,sigma,rho)
-    std_x=sqrt((phi_e^2*sigma^2)/(1-rho^2));
+    std_x=sqrt((phi_e^2*sigma^2)/(1-rho^2)); % Unconditional standard deviation of x_t
     x_min=-4*std_x;
     x_max=4*std_x;
     x_grid=linspace(x_min,x_max,Nx);
 end
 
-function [zt] = function_log_zt(sigma2_grid,x_grid,A0,A1,A2)
+function [zt] = function2_log_zt(sigma2_grid,x_grid,A0,A1,A2)
     [SIGMA2,X]=ndgrid(sigma2_grid,x_grid);
     zt=A0+A1.*X+A2.*SIGMA2;
 end
 
-Ns2=50;
-Nx=50;
-[sigma2_grid]=simple_sigma2_grid(Ns2,sigma);
+Ns2=50; % Number of grid points for sigma^2_t
+Nx=50; % Number of grid points for x_t
+[sigma2_grid]=simple_sigma2_grid(Ns2,sigma,sigma_w,nu1);
 [x_grid]=simple_x_grid(Nx,phi_e,sigma,rho);
-[zt] = function_log_zt(sigma2_grid,x_grid,A0,A1,A2);
+[zt] = function2_log_zt(sigma2_grid,x_grid,A0,A1,A2);
 
 figure(1)
 surf(x_grid,sigma2_grid,zt)
 xlabel('x_t'); ylabel('\sigma_t^2'); zlabel('z_t')
-saveas(figure(1),'figure1.png')
+title("Log price-consumption ratio")
+saveas(figure(1),'figure1_two.png')
 
-function [ztm] = function_log_ztm(sigma2_grid,x_grid,A0m,A1m,A2m)
+function [ztm] = function2_log_ztm(sigma2_grid,x_grid,A0m,A1m,A2m)
     [SIGMA2,X]=ndgrid(sigma2_grid,x_grid);
     ztm=A0m+A1m.*X+A2m.*SIGMA2;
 end
 
-[ztm] = function_log_ztm(sigma2_grid,x_grid,A0m,A1m,A2m);
+[ztm] = function2_log_ztm(sigma2_grid,x_grid,A0m,A1m,A2m);
 
 figure(2)
 surf(x_grid,sigma2_grid,ztm)
 xlabel('x_t'); ylabel('\sigma_t^2'); zlabel('z_{m,t}')
-saveas(figure(2),'figure2.png')
+title("Log price-dividend ratio")
+saveas(figure(2),'figure2_two.png')
 
-function [rf] = function_rf(beta,mu,psi,theta,k1,A1,A2,sigma_w,x_grid,sigma2_grid,phi_e)
+function [rf] = function2_rf(beta,mu,psi,theta,k1,A1,A2,sigma_w,x_grid,sigma2_grid,phi_e)
     [SIGMA2,X]=ndgrid(sigma2_grid,x_grid);
     rf=-log(beta)+(1/psi)*mu+((theta-1)/2)*(k1*A2)^2*sigma_w^2+(1/psi)*X+ ...
         0.5*(theta-1-theta/psi^2)*SIGMA2+((theta-1)/2)*(k1*A1*phi_e)^2*SIGMA2;
 end
 
-[rf] = function_rf(beta,mu,psi,theta,k1,A1,A2,sigma_w,x_grid,sigma2_grid,phi_e);
+[rf] = function2_rf(beta,mu,psi,theta,k1,A1,A2,sigma_w,x_grid,sigma2_grid,phi_e);
 
 figure(3)
 surf(x_grid,sigma2_grid,rf)
 xlabel('x_t'); ylabel('\sigma_t^2'); zlabel('r_f')
-saveas(figure(3),'figure3.png')
+title("Log risk-free rate")
+saveas(figure(3),'figure3_two.png')
 
-%% IRFs
-
-function [x,s2,diff_z,diff_zm] = function_irf_z_zm(T,x0,sigma20,rho,phi_e,nu1,sigma,sigma_w, ...
+%% LOG-LINEARIZATION: IRFs
+function [x,s2,diff_z,diff_zm] = function2_irf_z_zm(T,x0,sigma20,rho,phi_e,nu1,sigma,sigma_w, ...
                         A0,A1,A2,A0m,A1m,A2m,shockType)
     shockSize=1;
     x=zeros(T+1,1);
@@ -198,7 +203,7 @@ function [x,s2,diff_z,diff_zm] = function_irf_z_zm(T,x0,sigma20,rho,phi_e,nu1,si
 
     z=A0+A1.*x+A2.*s2;
     zm=A0m+A1m.*x+A2m.*s2;
-    z_ss= A0+A2*sigma^2;
+    z_ss=A0+A2*sigma^2;
     zm_ss=A0m+A2m*sigma^2;
     diff_z=z-z_ss;
     diff_zm=zm-zm_ss;
@@ -209,22 +214,22 @@ t=(1:T)';
 x_ss=0; % Unconditional expectation of x_t
 sigma2_ss=sigma^2; % Unconditional expectation of sigma_t^2
 
-[x_eps,s2_eps,diff_z_eps,diff_zm_eps] = function_irf_z_zm(T,x_ss,sigma2_ss,rho,phi_e,nu1,sigma,sigma_w, ...
+[x_eps,s2_eps,diff_z_eps,diff_zm_eps] = function2_irf_z_zm(T,x_ss,sigma2_ss,rho,phi_e,nu1,sigma,sigma_w, ...
                    A0,A1,A2,A0m,A1m,A2m,"epsilon");
 
-[x_omega,s2_omega,diff_z_omega,diff_zm_omega] = function_irf_z_zm(T,x_ss,sigma2_ss,rho,phi_e,nu1,sigma,sigma_w, ...
+[x_omega,s2_omega,diff_z_omega,diff_zm_omega] = function2_irf_z_zm(T,x_ss,sigma2_ss,rho,phi_e,nu1,sigma,sigma_w, ...
                    A0,A1,A2,A0m,A1m,A2m,"omega");
 
 figure(4)
 plot(t,diff_z_eps(2:end),t,diff_zm_eps(2:end),'LineWidth',2);
 grid on;xlabel('t');ylabel('Difference w.r.t. ss');
 legend('\Delta z_t (epsilon shock)','\Delta z_{m,t} (epsilon shock)','Location','Best');
-title('IRFs to \epsilon shock');
-saveas(figure(4),'figure4.png')
+title('IRFs to an \epsilon shock');
+saveas(figure(4),'figure4_two.png')
 
 figure(5)
 plot(t,diff_z_omega(2:end),t,diff_zm_omega(2:end),'LineWidth',2);
 grid on;xlabel('t');ylabel('Difference w.r.t. ss');
 legend('\Delta z_t (omega shock)','\Delta z_{m,t} (omega shock)','Location','Best');
-title('IRFs to \omega shock');
-saveas(figure(5),'figure5.png')
+title('IRFs to an \omega shock');
+saveas(figure(5),'figure5_two.png')
