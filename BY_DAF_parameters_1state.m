@@ -185,4 +185,4 @@ plot(t,diff_z_eps(2:end),t,diff_zm_eps(2:end),'LineWidth',2);
 grid on;xlabel('t');ylabel('Difference w.r.t. ss');
 legend('\Delta z_t (epsilon shock)','\Delta z_{m,t} (epsilon shock)','Location','Best');
 title('IRFs to an \epsilon shock');
-saveas(figure(4),'figure4_two.png')
+saveas(figure(4),'figure4_one.png')
