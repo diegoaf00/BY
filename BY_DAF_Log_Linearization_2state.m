@@ -4,6 +4,7 @@
 
 clear;
 clc;
+seed=202601;
 
 %% PARAMETERS
 sigma=0.0078;
@@ -233,3 +234,257 @@ grid on;xlabel('t');ylabel('Difference w.r.t. ss');
 legend('\Delta z_t (omega shock)','\Delta z_{m,t} (omega shock)','Location','Best');
 title('IRFs to an \omega shock');
 saveas(figure(5),'figure5_two.png')
+
+%% LOG-LINEARIZATION: TABLE 4
+
+function [acf_k] = function_acf_k(g,k)
+    T=length(g);
+    g0=g(1:T-k)-mean(g);
+    g1=g(1+k:T)-mean(g);
+    acf_k=(g0'*g1)/sqrt((g0'*g0)*(g1'*g1));
+end
+
+% POPULATION
+function [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_exp_pd,ac1_pd,ac2_pd] = ...
+    function2_simulate_log_linear_table4(...
+    T,burn,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,k1,A1,A0m,A1m,k0m,k1m,nu1,sigma_w,A2,A2m)
+
+    x=zeros(T,1);
+    s2=zeros(T,1);
+    g=zeros(T,1);
+    gd=zeros(T,1);
+    rm=zeros(T,1);
+
+    epsilon=randn(T,1);
+    eta=randn(T,1);
+    u=randn(T,1);
+    omega=randn(T,1);
+
+    x(1)=0; % Unconditional expectation of x_t
+    s2(1)=sigma^2; % Unconditional expectation of sigma_t^2
+
+    for t=1:T-1
+        x(t+1)=rho*x(t)+phi_e*sqrt(s2(t))*epsilon(t+1);
+        g(t+1)=mu+x(t)+sqrt(s2(t))*eta(t+1);
+        gd(t+1)=mu_d+phi*x(t)+phi_d*sqrt(s2(t))*u(t+1);
+        s2(t+1)=sigma^2+nu1*(s2(t)-sigma^2)+sigma_w*omega(t+1);
+        s2(t+1)=max(s2(t+1),1e-9);
+    end
+
+    zm=A0m+A1m*x+A2m*s2;
+    rf=-log(beta)+(1/psi)*mu+((theta-1)/2)*(k1*A2)^2*sigma_w^2+(1/psi)*x+ ...
+        0.5*(theta-1-theta/(psi^2))*s2+((theta-1)/2)*(k1*A1*phi_e)^2*s2;
+    Rf=exp(rf)-1;
+
+    for t=1:T-1
+        rm(t+1)=k0m+k1m*zm(t+1)-zm(t)+gd(t+1);
+    end
+
+    Rm=exp(rm)-1;
+
+    t=(burn+1):(T-1);
+
+    Rm_sim=Rm(t);
+    Rf_sim=Rf(t);
+    zm_sim=zm(t);
+    excess_sim=Rm_sim-Rf_sim;
+
+    expected_excess=mean(excess_sim)*12*100; % I annualize returns by multiplying by 12
+    expected_Rf=mean(Rf_sim)*12*100;
+    sigma_Rm=std(Rm_sim)*sqrt(12)*100; % I annualize volatility by multiplying by sqrt(12)
+    sigma_Rf=std(Rf_sim)*sqrt(12)*100;
+    sigma_pd=std(zm_sim); 
+    expected_exp_pd=mean(exp(zm_sim))/12;
+    ac1_pd=function_acf_k(zm_sim,1);
+    ac2_pd=function_acf_k(zm_sim,2);
+end
+
+T=2000000;
+burn_pop=100000;
+rng(seed);
+
+[expected_excess,expected_rf,sigma_rm,sigma_rf,sigma_pd,expected_exp_pd,ac1_pd,ac2_pd] = ...
+    function2_simulate_log_linear_table4(...
+    T,burn_pop,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,k1,A1,A0m,A1m,k0m,k1m,nu1,sigma_w,A2,A2m);
+
+fprintf('TABLE IV MOMENTS (LOG-LINEAR SIMULATION: POPULATION)\n');
+fprintf('E(Rm-Rf)=%10.3f\n',expected_excess);
+fprintf('E(Rf)= %12.3f\n',expected_rf);
+fprintf('sigma(Rm)=%9.3f\n',sigma_rm);
+fprintf('sigma(Rf)=%9.3f\n',sigma_rf);
+fprintf('sigma(p-d)=%8.3f\n',sigma_pd);
+fprintf('E(exp(p-d))=%7.3f\n',expected_exp_pd);
+fprintf('AC1(p-d)=%10.3f\n',ac1_pd);
+fprintf('AC2(p-d)=%10.3f\n',ac2_pd);
+
+% MONTE CARLO
+num_sim=1000;
+Tmonths=840;
+burn_mc=100;
+
+expected_excess_mc=zeros(num_sim,1);
+expected_Rf_mc=zeros(num_sim,1);
+sigma_Rm_mc=zeros(num_sim,1);
+sigma_Rf_mc=zeros(num_sim,1);
+sigma_pd_mc=zeros(num_sim,1);
+expected_exp_pd_mc=zeros(num_sim,1);
+ac1_pd_mc=zeros(num_sim,1);
+ac2_pd_mc=zeros(num_sim,1);
+
+for k=1:num_sim
+    [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_exp_pd,ac1_pd,ac2_pd]= ...
+        function2_simulate_log_linear_table4( ...
+        Tmonths+burn_mc,burn_mc,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,k1,A1,A0m,A1m,k0m,k1m,nu1,sigma_w,A2,A2m);
+
+    expected_excess_mc(k)=expected_excess;
+    expected_Rf_mc(k)=expected_Rf;
+    sigma_Rm_mc(k)=sigma_Rm;
+    sigma_Rf_mc(k)=sigma_Rf;
+    sigma_pd_mc(k)=sigma_pd;
+    expected_exp_pd_mc(k)=expected_exp_pd;
+    ac1_pd_mc(k)=ac1_pd;
+    ac2_pd_mc(k)=ac2_pd;
+end
+
+mean_expected_excess_mc=mean(expected_excess_mc);
+mean_expected_rf_mc=mean(expected_Rf_mc);
+mean_sigma_rm_mc=mean(sigma_Rm_mc);
+mean_sigma_rf_mc=mean(sigma_Rf_mc);
+mean_sigma_pd_mc=mean(sigma_pd_mc);
+mean_expected_exp_pd_mc=mean(expected_exp_pd_mc);
+mean_ac1_pd_mc=mean(ac1_pd_mc);
+mean_ac2_pd_mc=mean(ac2_pd_mc);
+
+fprintf('TABLE IV MOMENTS (LOG-LINEAR SIMULATION: MONTE CARLO)\n');
+fprintf('E(Rm-Rf)=%10.3f\n',mean_expected_excess_mc);
+fprintf('E(Rf)= %12.3f\n',mean_expected_rf_mc);
+fprintf('sigma(Rm)=%9.3f\n',mean_sigma_rm_mc);
+fprintf('sigma(Rf)=%9.3f\n',mean_sigma_rf_mc);
+fprintf('sigma(p-d)=%8.3f\n',mean_sigma_pd_mc);
+fprintf('E(exp(p-d))=%7.3f\n',mean_expected_exp_pd_mc);
+fprintf('AC1(p-d)=%10.3f\n',mean_ac1_pd_mc);
+fprintf('AC2(p-d)=%10.3f\n',mean_ac2_pd_mc);
+
+%% LOG-LINEARIZATION: TABLE 1 WITH TWO STATE VARIABLES
+%{
+function [acf_k] = function_acf_k(g,k)
+    T=length(g);
+    g0=g(1:T-k)-mean(g);
+    g1=g(1+k:T)-mean(g);
+    acf_k=(g0'*g1)/sqrt((g0'*g0)*(g1'*g1));
+end
+
+function [var_ratio] = function_var_ratio(g,k) % Variance Ratio from Lo and MacKinlay (1988, 1989)
+    T=length(g);
+    Var=var(g,1);
+    Sum=zeros(T-k+1,1);
+    for t=1:T-k+1
+        Sum(t)=sum(g(t:t+k-1));
+    end
+    var_ratio=var(Sum,1)/(k*Var);
+end
+
+function [ga] = function_monthly_to_annual(gm)
+    Tm=length(gm);
+    Ta=floor(Tm/12);
+    gm=gm(1:12*Ta); % Get full years only
+    ga=reshape(gm,12,Ta);
+    ga=sum(ga,1).'; % Sum log growth
+end
+
+function[g,gd] = function2_sim_monthly_growth(T,rho,phi_e,nu1,sigma,sigma_w,mu,mu_d,phi,phi_d)
+    epsilon=randn(T,1);
+    omega=randn(T,1);
+    eta=randn(T,1);
+    u=randn(T,1);
+
+    x=zeros(T,1);
+    s2=zeros(T,1);
+    s2(1)=sigma^2;
+    x(1)=0;
+
+    g=zeros(T,1);
+    gd=zeros(T,1);
+
+    for t=1:T-1
+        g(t+1)=mu+x(t)+sqrt(s2(t))*eta(t+1);
+        gd(t+1)=mu_d+phi*x(t)+phi_d*sqrt(s2(t))*u(t+1);
+        x(t+1)=rho*x(t)+phi_e*sqrt(s2(t))*epsilon(t+1);
+        s2(t+1)=sigma^2+nu1*(s2(t)-sigma^2)+sigma_w*omega(t+1);
+        s2(t+1)=max(s2(t+1),1e-9);
+    end
+end
+
+function [sigma_g,AC1,AC2,AC5,AC10,VR2,VR5,VR10] = function2_moments_cons_table1(ga)
+    sigma_g=100*std(ga,1);
+
+    AC1=function_acf_k(ga,1);
+    AC2=function_acf_k(ga,2);
+    AC5=function_acf_k(ga,5);
+    AC10=function_acf_k(ga,10);
+
+    VR2=function_var_ratio(ga,2);
+    VR5=function_var_ratio(ga,5);
+    VR10=function_var_ratio(ga,10);
+end
+
+function [sigma_gd,AC1_gd] = function2_moments_div_table1(gda)
+    sigma_gd=100*std(gda,1);
+    AC1_gd=function_acf_k(gda,1);
+end
+
+rng(202601);
+num_sim=1000;
+Tmonths=840;
+burn=100;
+pop_months=2000000;
+
+consumption_stats=zeros(num_sim,8);
+dividend_stats=zeros(num_sim,2);
+corr_div_cons=zeros(num_sim,1);
+
+for k = 1:num_sim
+    [g_m,gd_m] = function2_sim_monthly_growth(Tmonths+burn,rho,phi_e,nu1,sigma,sigma_w,mu,mu_d,phi,phi_d);
+    g_m=g_m(burn+1:end);
+    gd_m=gd_m(burn+1:end);
+
+    [g_a] = function_monthly_to_annual(g_m);
+    [gd_a] = function_monthly_to_annual(gd_m);
+
+    [sig,ac1,ac2,ac5,ac10,vr2,vr5,vr10] = function2_moments_cons_table1(g_a);
+    consumption_stats(k,:) = [sig,ac1,ac2,ac5,ac10,vr2,vr5,vr10];
+    [sigd,ac1d] = function2_moments_div_table1(gd_a);
+    dividend_stats(k,:) = [sigd,ac1d];
+    corr_div_cons(k)=corr(g_a,gd_a);
+end
+
+[g_pop_m,gd_pop_m] = function2_sim_monthly_growth(pop_months,rho,phi_e,nu1,sigma,sigma_w,mu,mu_d,phi,phi_d);
+
+[g_pop_a] = function_monthly_to_annual(g_pop_m);
+[gd_pop_a] = function_monthly_to_annual(gd_pop_m);
+
+[sig,ac1,ac2,ac5,ac10,vr2,vr5,vr10] = function2_moments_cons_table1(g_pop_a);
+consumption_stats_pop = [sig,ac1,ac2,ac5,ac10,vr2,vr5,vr10];
+[sigd,ac1d] = function2_moments_div_table1(gd_pop_a);
+dividend_stats_pop = [sigd,ac1d];
+corr_div_cons_pop=corr(g_pop_a,gd_pop_a);
+
+summary=@(X)[mean(X,1); prctile(X,95,1); prctile(X,5,1)];
+G_summary=summary(consumption_stats);
+GD_summary=summary(dividend_stats);
+CORR_summary=[mean(corr_div_cons);prctile(corr_div_cons,95);prctile(corr_div_cons,5)];
+
+% Table format:
+row_names_g = {'sigma(g)','AC(1)','AC(2)','AC(5)','AC(10)','VR(2)','VR(5)','VR(10)'};
+row_names_gd = {'sigma(g_d)','AC(1)'};
+
+Table_g=array2table([G_summary.' consumption_stats_pop(:)], ...
+      'VariableNames',{'Mean','P95','P05','Pop'},'RowNames',row_names_g);
+Table_gd=array2table([GD_summary.' dividend_stats_pop(:)], ...
+      'VariableNames',{'Mean','P95','P05','Pop'},'RowNames',row_names_gd);
+Table_corr=table([CORR_summary; corr_div_cons_pop], ...
+    'VariableNames',{'Value'},'RowNames',{'corr(g,gd)_Mean','corr(g,gd)_P95','corr(g,gd)_P05','corr(g,gd)_Pop'});
+disp('BY Table I (2 state variables): Consumption growth'); disp(Table_g);
+disp('BY Table I (2 state variables): Dividend growth'); disp(Table_gd);
+disp('BY Table I (2 state variables): corr(g,g_d)');disp(Table_corr);
+%}
