@@ -235,17 +235,10 @@ legend('\Delta z_t (omega shock)','\Delta z_{m,t} (omega shock)','Location','Bes
 title('IRFs to an \omega shock');
 saveas(figure(5),'figure5_two.png')
 
-%% LOG-LINEARIZATION: TABLE 4
-
-function [acf_k] = function_acf_k(g,k)
-    T=length(g);
-    g0=g(1:T-k)-mean(g);
-    g1=g(1+k:T)-mean(g);
-    acf_k=(g0'*g1)/sqrt((g0'*g0)*(g1'*g1));
-end
+%% LOG-LINEARIZATION: TABLE 5 POHL ET AL. (2018)
 
 % POPULATION
-function [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_exp_pd,ac1_pd,ac2_pd] = ...
+function [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_pd] = ...
     function2_simulate_log_linear_table4(...
     T,burn,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,k1,A1,A0m,A1m,k0m,k1m,nu1,sigma_w,A2,A2m)
 
@@ -274,48 +267,73 @@ function [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_exp_pd
     zm=A0m+A1m*x+A2m*s2;
     rf=-log(beta)+(1/psi)*mu+((theta-1)/2)*(k1*A2)^2*sigma_w^2+(1/psi)*x+ ...
         0.5*(theta-1-theta/(psi^2))*s2+((theta-1)/2)*(k1*A1*phi_e)^2*s2;
-    Rf=exp(rf)-1;
 
     for t=1:T-1
         rm(t+1)=k0m+k1m*zm(t+1)-zm(t)+gd(t+1);
     end
 
-    Rm=exp(rm)-1;
-
     t=(burn+1):(T-1);
 
-    Rm_sim=Rm(t);
-    Rf_sim=Rf(t);
+    rm_sim=rm(t);
+    rf_sim=rf(t);
     zm_sim=zm(t);
-    excess_sim=Rm_sim-Rf_sim;
+    gd_sim=gd(t);
 
-    expected_excess=mean(excess_sim)*12*100; % I annualize returns by multiplying by 12
-    expected_Rf=mean(Rf_sim)*12*100;
-    sigma_Rm=std(Rm_sim)*sqrt(12)*100; % I annualize volatility by multiplying by sqrt(12)
-    sigma_Rf=std(Rf_sim)*sqrt(12)*100;
-    sigma_pd=std(zm_sim); 
-    expected_exp_pd=mean(exp(zm_sim))/12;
-    ac1_pd=function_acf_k(zm_sim,1);
-    ac2_pd=function_acf_k(zm_sim,2);
+    T_months=length(rm_sim);
+    years=floor(T_months/12); % Number of full years
+    t_years=1:(12*years);
+
+    rm_reshape=reshape(rm_sim(t_years),12,years);
+    rf_reshape=reshape(rf_sim(t_years),12,years);
+    gd_reshape=reshape(gd_sim(t_years),12,years);
+
+    rm_annual=sum(rm_reshape,1)'; % Get annual log returns
+    rf_annual=sum(rf_reshape,1)'; % Get annual log returns
+
+    Rm_annual=exp(rm_annual)-1;
+    Rf_annual=exp(rf_annual)-1;
+
+    excess_annual=Rm_annual-Rf_annual;
+
+    PD_level=exp(zm_sim(t_years));
+    PD_reshape=reshape(PD_level,12,years);
+    PD_December=PD_reshape(12,:)'; % Keep one observation per year
+
+    PD_annual=zeros(years,1);
+
+    for i=1:years
+        gd_annual=gd_reshape(:,i);
+        growth_annual=exp(sum(gd_annual)); % Gross dividend growth over a year
+        sum_dividends = sum(exp(cumsum(gd_annual))); % Sum of dividend levels divided by the initial level
+        PD_annual(i)=PD_December(i)*growth_annual/sum_dividends; % Price divided by sum of dividends
+    end
+
+    pd_annual=log(PD_annual);
+
+    expected_excess=mean(excess_annual)*100;
+    expected_Rf=mean(Rf_annual)*100;
+    sigma_Rm=std(Rm_annual)*100;
+    sigma_Rf=std(Rf_annual)*100;
+
+    sigma_pd=std(pd_annual);
+    expected_pd=mean(pd_annual);
 end
 
 T=2000000;
 burn_pop=100000;
 rng(seed);
 
-[expected_excess,expected_rf,sigma_rm,sigma_rf,sigma_pd,expected_exp_pd,ac1_pd,ac2_pd] = ...
+[expected_excess,expected_rf,sigma_rm,sigma_rf,sigma_pd,expected_pd] = ...
     function2_simulate_log_linear_table4(...
     T,burn_pop,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,k1,A1,A0m,A1m,k0m,k1m,nu1,sigma_w,A2,A2m);
 
-fprintf('TABLE IV MOMENTS (LOG-LINEAR SIMULATION: POPULATION)\n');
+fprintf('TABLE V MOMENTS (LOG-LINEAR SIMULATION: POPULATION)\n');
 fprintf('E(Rm-Rf)=%10.3f\n',expected_excess);
 fprintf('E(Rf)= %12.3f\n',expected_rf);
 fprintf('sigma(Rm)=%9.3f\n',sigma_rm);
 fprintf('sigma(Rf)=%9.3f\n',sigma_rf);
 fprintf('sigma(p-d)=%8.3f\n',sigma_pd);
-fprintf('E(exp(p-d))=%7.3f\n',expected_exp_pd);
-fprintf('AC1(p-d)=%10.3f\n',ac1_pd);
-fprintf('AC2(p-d)=%10.3f\n',ac2_pd);
+fprintf('E(exp(p-d))=%7.3f\n',expected_pd);
 
 % MONTE CARLO
 num_sim=1000;
@@ -327,12 +345,10 @@ expected_Rf_mc=zeros(num_sim,1);
 sigma_Rm_mc=zeros(num_sim,1);
 sigma_Rf_mc=zeros(num_sim,1);
 sigma_pd_mc=zeros(num_sim,1);
-expected_exp_pd_mc=zeros(num_sim,1);
-ac1_pd_mc=zeros(num_sim,1);
-ac2_pd_mc=zeros(num_sim,1);
+expected_pd_mc=zeros(num_sim,1);
 
 for k=1:num_sim
-    [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_exp_pd,ac1_pd,ac2_pd]= ...
+    [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_pd]= ...
         function2_simulate_log_linear_table4( ...
         Tmonths+burn_mc,burn_mc,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,k1,A1,A0m,A1m,k0m,k1m,nu1,sigma_w,A2,A2m);
 
@@ -341,9 +357,7 @@ for k=1:num_sim
     sigma_Rm_mc(k)=sigma_Rm;
     sigma_Rf_mc(k)=sigma_Rf;
     sigma_pd_mc(k)=sigma_pd;
-    expected_exp_pd_mc(k)=expected_exp_pd;
-    ac1_pd_mc(k)=ac1_pd;
-    ac2_pd_mc(k)=ac2_pd;
+    expected_pd_mc(k)=expected_pd;
 end
 
 mean_expected_excess_mc=mean(expected_excess_mc);
@@ -351,16 +365,12 @@ mean_expected_rf_mc=mean(expected_Rf_mc);
 mean_sigma_rm_mc=mean(sigma_Rm_mc);
 mean_sigma_rf_mc=mean(sigma_Rf_mc);
 mean_sigma_pd_mc=mean(sigma_pd_mc);
-mean_expected_exp_pd_mc=mean(expected_exp_pd_mc);
-mean_ac1_pd_mc=mean(ac1_pd_mc);
-mean_ac2_pd_mc=mean(ac2_pd_mc);
+mean_expected_pd_mc=mean(expected_pd_mc);
 
-fprintf('TABLE IV MOMENTS (LOG-LINEAR SIMULATION: MONTE CARLO)\n');
+fprintf('TABLE V MOMENTS (LOG-LINEAR SIMULATION: MONTE CARLO)\n');
 fprintf('E(Rm-Rf)=%10.3f\n',mean_expected_excess_mc);
 fprintf('E(Rf)= %12.3f\n',mean_expected_rf_mc);
 fprintf('sigma(Rm)=%9.3f\n',mean_sigma_rm_mc);
 fprintf('sigma(Rf)=%9.3f\n',mean_sigma_rf_mc);
 fprintf('sigma(p-d)=%8.3f\n',mean_sigma_pd_mc);
-fprintf('E(exp(p-d))=%7.3f\n',mean_expected_exp_pd_mc);
-fprintf('AC1(p-d)=%10.3f\n',mean_ac1_pd_mc);
-fprintf('AC2(p-d)=%10.3f\n',mean_ac2_pd_mc);
+fprintf('E(exp(p-d))=%7.3f\n',mean_expected_pd_mc);
