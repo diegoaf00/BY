@@ -104,6 +104,8 @@ end
         phi,k0,k1,A0,A1,phi_d,mu_d);
 
 %% TAUCHEN FUNCTION
+Nx=50; % Number of grid points
+
 function [prob] = cdf_standard_normal(x)
     prob=0.5*erfc(-x/sqrt(2));
 end    
@@ -135,3 +137,25 @@ function [yi,Pi] = DAF_tauchen_normal(mu,lambda,sigma_epsilon,N)
         end
     end
 end
+
+[x_grid,P_matrix] = DAF_tauchen_normal(0,rho,phi_e*sigma,Nx); % Get grid and transition matrix
+
+%% VFI: POLICY FUNCTIONS
+function [V1] = value_function_iteration(Nx,beta,gamma,theta,mu,x_grid,sigma,P_matrix,max_iter,crit)
+    V0=ones(Nx,1); % Initial value function
+    terminate=0;
+    it=1;
+    while (terminate==0 & it<max_iter)
+        V1=((1-beta)+beta.*exp(((1-gamma)/theta).*(mu+x_grid)+(0.5/theta)*(1-gamma)^2*sigma^2).* (P_matrix*(V0.^(1-gamma))).^(1/theta)).^(theta/(1-gamma)); % See pdf 
+        % Check for convergence
+        if max(abs(V1-V0))<crit
+            terminate=1;
+        end        
+        V0=V1;
+        it=it+1;
+    end 
+end
+
+max_iter=10000;
+crit=1e-9;
+[V1] = value_function_iteration(Nx,beta,gamma,theta,mu,x_grid,sigma,P_matrix,max_iter,crit);
