@@ -20,89 +20,6 @@ phi=3;
 mu_d=0.0015;
 phi_d=4.5;
 
-%% EQUATIONS FOR FIXED POINT METHOD (C0NSUMPTION)
-function [k0] = function1_k0(zbar,k1)
-    k0=log(exp(zbar)+1)-k1*zbar;
-end
-
-function [k1] = function1_k1(zbar)
-    k1=exp(zbar)/(exp(zbar)+1);
-end
-
-function [A1] = function1_A1(psi,k1,rho)
-    A1=(1-1/psi)/(1-k1*rho);
-end
-
-function [A0] = function1_A0(beta,mu,psi,k0,k1,theta,sigma,A1,phi_e)
-    A0=(log(beta)+mu*(1-1/psi)+k0+0.5*sigma^2*theta*((1-1/psi)^2+(k1*A1*phi_e)^2))/(1-k1);
-end
-
-%% FIXED-POINT METHOD (C0NSUMPTION)
-function [k0,k1,A0,A1,zbar] = solve_param_cons1(beta,mu,psi,theta,rho,phi_e,sigma)
-    zbar_init=0;
-    max_iter=1000;
-    terminate=0;
-    crit=1e-9; 
-    iter=1;
-    while (terminate==0 & iter<max_iter)
-        k1 = function1_k1(zbar_init);
-        k0 = function1_k0(zbar_init,k1);
-        A1 = function1_A1(psi,k1,rho);
-        A0 = function1_A0(beta,mu,psi,k0,k1,theta,sigma,A1,phi_e);
-        zbar = A0; % Unconditional expectation of z_t
-        if abs(zbar-zbar_init)<crit
-            terminate=1;
-        end        
-        zbar_init=zbar;
-        iter=iter+1;
-    end
-end
-
-[k0,k1,A0,A1,zbar] = solve_param_cons1(beta,mu,psi,theta,rho,phi_e,sigma);
-
-%% EQUATIONS FOR FIXED POINT METHOD (DIVIDEND)
-function [k0m] = function1_k0m(zbarm,k1m)
-    k0m=log(exp(zbarm)+1)-k1m*zbarm;
-end
-
-function [k1m] = function1_k1m(zbarm)
-    k1m=exp(zbarm)/(exp(zbarm)+1);
-end
-
-function [A1m] = function1_A1m(psi,k1m,rho,phi)
-    A1m=(phi-1/psi)/(1-k1m*rho);
-end
-
-function [A0m] = function1_A0m(beta,mu,psi,k0,k1,theta,sigma,A0,A1,k0m,k1m,A1m,mu_d,phi_e,phi_d)
-    A0m = (theta*log(beta)+mu*(theta-1-theta/psi)+(theta-1)*(k0+A0*(k1-1)) ...
-        +k0m+mu_d+0.5*sigma^2*((theta-1-theta/psi)^2+((theta-1)*k1*A1*phi_e+k1m*A1m*phi_e)^2+phi_d^2))/(1-k1m);
-end
-
-%% FIXED-POINT METHOD (DIVIDEND)
-function [k0m,k1m,A0m,A1m,zbarm] = solve_param_div1(beta,mu,psi,theta,rho,phi_e,sigma, ...
-        phi,k0,k1,A0,A1,phi_d,mu_d)
-    zbarm_init=0;
-    max_iter=1000;
-    terminate=0;
-    crit=1e-9; 
-    iter=1;
-    while (terminate==0 & iter<max_iter)
-        k1m = function1_k1m(zbarm_init);
-        k0m = function1_k0m(zbarm_init,k1m);
-        A1m = function1_A1m(psi,k1m,rho,phi);
-        A0m = function1_A0m(beta,mu,psi,k0,k1,theta,sigma,A0,A1,k0m,k1m,A1m,mu_d,phi_e,phi_d);
-        zbarm = A0m; % Unconditional expectation of z_{m,t}
-        if abs(zbarm-zbarm_init)<crit
-            terminate=1;
-        end        
-        zbarm_init=zbarm;
-        iter=iter+1;
-    end
-end
-
-[k0m,k1m,A0m,A1m,zbarm] = solve_param_div1(beta,mu,psi,theta,rho,phi_e,sigma, ...
-        phi,k0,k1,A0,A1,phi_d,mu_d);
-
 %% TAUCHEN FUNCTION
 Nx=50; % Number of grid points
 
@@ -141,21 +58,46 @@ end
 [x_grid,P_matrix] = DAF_tauchen_normal(0,rho,phi_e*sigma,Nx); % Get grid and transition matrix
 
 %% VFI: POLICY FUNCTIONS
-function [V1] = value_function_iteration(Nx,beta,gamma,theta,mu,x_grid,sigma,P_matrix,max_iter,crit)
+function [V1_VC] = value_function_iteration_VC1(Nx,beta,gamma,theta,mu,x_grid,sigma,P_matrix,max_iter,crit)
     V0=ones(Nx,1); % Initial value function
     terminate=0;
     it=1;
     while (terminate==0 & it<max_iter)
-        V1=((1-beta)+beta.*exp(((1-gamma)/theta).*(mu+x_grid)+(0.5/theta)*(1-gamma)^2*sigma^2).* (P_matrix*(V0.^(1-gamma))).^(1/theta)).^(theta/(1-gamma)); % See pdf 
+        V1_VC=((1-beta)+beta.*exp(((1-gamma)/theta).*(mu+x_grid)+(0.5/theta)*(1-gamma)^2*sigma^2).* (P_matrix*(V0.^(1-gamma))).^(1/theta)).^(theta/(1-gamma)); % See pdf 
         % Check for convergence
-        if max(abs(V1-V0))<crit
+        if max(abs(V1_VC-V0))<crit
             terminate=1;
         end        
-        V0=V1;
+        V0=V1_VC;
+        it=it+1;
+    end 
+end
+
+function [V1_PC] = value_function_iteration_PC1(Nx,beta,psi,theta,mu,x_grid,sigma,P_matrix,max_iter,crit)
+    V0=ones(Nx,1); % Initial value function
+    terminate=0;
+    it=1;
+    while (terminate==0 & it<max_iter)
+        V1_PC=beta.*exp((1-1/psi).*(mu+x_grid)+0.5*theta*(1-1/psi)^2*sigma^2).*(P_matrix*(1+V0).^theta).^(1/theta); % See pdf 
+        % Check for convergence
+        if max(abs(V1_PC-V0))<crit
+            terminate=1;
+        end        
+        V0=V1_PC;
         it=it+1;
     end 
 end
 
 max_iter=10000;
 crit=1e-9;
-[V1] = value_function_iteration(Nx,beta,gamma,theta,mu,x_grid,sigma,P_matrix,max_iter,crit);
+
+[V1_VC] = value_function_iteration_VC1(Nx,beta,gamma,theta,mu,x_grid,sigma,P_matrix,max_iter,crit);
+[V1_PC] = value_function_iteration_PC1(Nx,beta,psi,theta,mu,x_grid,sigma,P_matrix,max_iter,crit);
+
+figure(6)
+plot(x_grid,log(V1_PC),'LineWidth',2)
+xlabel('x_t'); ylabel('z_t')
+grid on
+title("Log price-consumption ratio")
+saveas(figure(6),'figure6_one.png')
+
