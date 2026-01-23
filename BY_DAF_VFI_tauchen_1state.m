@@ -88,11 +88,28 @@ function [V1_PC] = value_function_iteration_PC1(Nx,beta,psi,theta,mu,x_grid,sigm
     end 
 end
 
+function [V1_PD] = value_function_iteration_PD1(Nx,beta,psi,theta,mu,x_grid,sigma,P_matrix,max_iter,crit,mu_d,phi,phi_d,PC)
+    V0=ones(Nx,1); % Initial value function
+    terminate=0;
+    it=1;
+    while (terminate==0 & it<max_iter)
+        V1_PD=beta^theta.*exp((theta-1-theta/psi).*(mu+x_grid)+mu_d+phi*x_grid+0.5*(theta-1-theta/psi)^2*sigma^2+0.5*phi_d^2*sigma^2).* ...
+            (PC).^(1-theta).*(P_matrix*(((1+PC).^(theta-1)).*(1+V0))); % See pdf 
+        % Check for convergence
+        if max(abs(V1_PD-V0))<crit
+            terminate=1;
+        end        
+        V0=V1_PD;
+        it=it+1;
+    end 
+end
+
 max_iter=10000;
 crit=1e-9;
 
 [V1_VC] = value_function_iteration_VC1(Nx,beta,gamma,theta,mu,x_grid,sigma,P_matrix,max_iter,crit);
 [V1_PC] = value_function_iteration_PC1(Nx,beta,psi,theta,mu,x_grid,sigma,P_matrix,max_iter,crit);
+[V1_PD] = value_function_iteration_PD1(Nx,beta,psi,theta,mu,x_grid,sigma,P_matrix,max_iter,crit,mu_d,phi,phi_d,V1_PC);
 
 figure(6)
 plot(x_grid,log(V1_PC),'LineWidth',2)
@@ -100,4 +117,11 @@ xlabel('x_t'); ylabel('z_t')
 grid on
 title("Log price-consumption ratio")
 saveas(figure(6),'figure6_one.png')
+
+figure(7)
+plot(x_grid,log(V1_PD),'LineWidth',2)
+xlabel('x_t'); ylabel('z_{m,t}')
+grid on
+title("Log price-dividend ratio")
+saveas(figure(7),'figure7_one.png')
 
