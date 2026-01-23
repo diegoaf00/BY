@@ -125,3 +125,16 @@ grid on
 title("Log price-dividend ratio")
 saveas(figure(7),'figure7_one.png')
 
+function [Rf] = function1_Rf(beta,mu,psi,theta,x_grid,sigma,P_matrix,PC)
+    Rf=(beta^theta.*exp((theta-1-theta/psi).*(mu+x_grid)+0.5*(theta-1-theta/psi)^2*sigma^2).*(PC).^(1-theta).*(P_matrix*((1+PC).^(theta-1)))).^(-1)-1; % See pdf
+end
+
+[Rf] = function1_Rf(beta,mu,psi,theta,x_grid,sigma,P_matrix,V1_PC);
+
+figure(8)
+plot(x_grid,log(1+Rf),'LineWidth',2)
+xlabel('x_t'); ylabel('r_f')
+grid on
+title("Log risk-free rate")
+saveas(figure(8),'figure8_one.png')
+
