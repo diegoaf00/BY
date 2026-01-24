@@ -138,3 +138,77 @@ grid on
 title("Log risk-free rate")
 saveas(figure(8),'figure8_one.png')
 
+%% VFI: IRFs
+function [diff_z,diff_zm] = function1_vfi1_irf_z_zm(T,x0,rho,phi_e,sigma,x_grid,V1_PC,V1_PD)
+    shockSize=1;
+    x=zeros(T+1,1);
+    x(1)=x0;
+    eps=zeros(T,1);
+
+    eps(1)=shockSize;
+
+    for t=1:T
+        x(t+1)=rho*x(t)+phi_e*sigma*eps(t);
+    end
+
+    x_winsor=min(max(x,min(x_grid)),max(x_grid)); % I make sure that x is bewteen x_max and x_min from the Tauchen discretization
+    exp_z=interp1(x_grid,V1_PC,x_winsor); % I interpolate the value of the PC ratio
+    exp_zm=interp1(x_grid,V1_PD,x_winsor); % I interpolate the value of the PD ratio
+    z=log(exp_z);
+    zm=log(exp_zm);
+    
+    exp_z_ss=interp1(x_grid,V1_PC,x0); % I interpolate the value of the PC ratio
+    exp_zm_ss=interp1(x_grid,V1_PD,x0); % I interpolate the value of the PD ratio
+    z_ss=log(exp_z_ss);
+    zm_ss=log(exp_zm_ss);
+    diff_z=z-z_ss;
+    diff_zm=zm-zm_ss;
+end
+
+T=250;
+t=(1:T)';
+x_ss=0; % Unconditional expectation of x_t
+
+[diff1_z_eps,diff1_zm_eps] = function1_vfi1_irf_z_zm(T,x_ss,rho,phi_e,sigma,x_grid,V1_PC,V1_PD);
+
+figure(9)
+plot(t,diff1_z_eps(2:end),t,diff1_zm_eps(2:end),'LineWidth',2);
+grid on;xlabel('t');ylabel('Difference w.r.t. ss');
+legend('\Delta z_t (epsilon shock)','\Delta z_{m,t} (epsilon shock)','Location','Best');
+title('IRFs to an \epsilon shock (interpolation)');
+saveas(figure(9),'figure9_one.png')
+
+
+% IRF using Tauchen transition probabilities and the difference in conditional means
+function [diff_z,diff_zm] = function1_vfi2_irf_z_zm(T,x0,phi_e,sigma,x_grid,V1_PC,V1_PD,P_matrix)
+    shockSize=1;
+    [~,index_xss]=min(abs(x_grid-x0)); % Get where is the x closest to x0 in the grid (ss)
+    x_shock=x0+phi_e*sigma*shockSize; % Get the value of x right after an epsilon shock (counterfactual)
+    [~, index_x_shock]=min(abs(x_grid-x_shock)); % Get where is the x closest to x_shock in the grid
+    Nx=length(x_grid);
+    prob_t_ss=zeros(Nx,1);
+    prob_t_ss(index_xss)=1; % In SS, the model has x=x0 with probability 1 at t=0
+    prob_t_shock=zeros(Nx,1);
+    prob_t_shock(index_x_shock)=1; % After the shock, the model has x=x_shock with probability 1 at t=0
+
+    expected_ss=zeros(T+1,2);
+    expected_shock=zeros(T+1,2);
+    for t=0:T
+        expected_ss(t+1,:)=[(prob_t_ss')*log(V1_PC),(prob_t_ss')*log(V1_PD)]; % Get the expected value of z, zm in ss path
+        expected_shock(t+1,:)=[(prob_t_shock')*log(V1_PC),(prob_t_shock')*log(V1_PD)]; % Get the expected value of z, zm in a "shocked" world
+        prob_t_ss=P_matrix'*prob_t_ss; % Update the probabilities using the transition matrix
+        prob_t_shock=P_matrix'*prob_t_shock; % Update the probabilities using the transition matrix
+    end
+
+    diff_z=expected_shock(:,1)-expected_ss(:,1); % IRF is the difference in the conditional means
+    diff_zm=expected_shock(:,2)-expected_ss(:,2); % IRF is the difference in the conditional means
+end
+
+[diff2_z_eps,diff2_zm_eps] = function1_vfi2_irf_z_zm(T,x_ss,phi_e,sigma,x_grid,V1_PC,V1_PD,P_matrix);
+
+figure(10)
+plot(t,diff2_z_eps(2:end),t,diff2_zm_eps(2:end),'LineWidth',2);
+grid on;xlabel('t');ylabel('Difference w.r.t. ss');
+legend('\Delta z_t (epsilon shock)','\Delta z_{m,t} (epsilon shock)','Location','Best');
+title('IRFs to an \epsilon shock (transition probabilities and expectations)');
+saveas(figure(10),'figure10_one.png')
