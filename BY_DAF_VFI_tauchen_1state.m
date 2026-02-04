@@ -1,7 +1,7 @@
 %DIEGO ALVAREZ FLORES
 %BY REPLICATION: ONE STATE VARIABLE
 %VFI: TAUCHEN
-%JANUARY 2026
+%FEBRUARY 2026
 
 clear;
 clc;
@@ -178,37 +178,141 @@ legend('\Delta z_t (epsilon shock)','\Delta z_{m,t} (epsilon shock)','Location',
 title('IRFs to an \epsilon shock (interpolation)');
 saveas(figure(9),'figure9_one.png')
 
+%% VFI: TABLE 5 POHL ET AL. (2018)
 
-% IRF using Tauchen transition probabilities and the difference in conditional means
-function [diff_z,diff_zm] = function1_vfi2_irf_z_zm(T,x0,phi_e,sigma,x_grid,V1_PC,V1_PD,P_matrix)
-    shockSize=1;
-    [~,index_xss]=min(abs(x_grid-x0)); % Get where is the x closest to x0 in the grid (ss)
-    x_shock=x0+phi_e*sigma*shockSize; % Get the value of x right after an epsilon shock (counterfactual)
-    [~, index_x_shock]=min(abs(x_grid-x_shock)); % Get where is the x closest to x_shock in the grid
-    Nx=length(x_grid);
-    prob_t_ss=zeros(Nx,1);
-    prob_t_ss(index_xss)=1; % In SS, the model has x=x0 with probability 1 at t=0
-    prob_t_shock=zeros(Nx,1);
-    prob_t_shock(index_x_shock)=1; % After the shock, the model has x=x_shock with probability 1 at t=0
+% POPULATION
+function [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_pd] = function1_simulate_vfi_tauchen_table2(...
+    T,burn,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,x_grid,V1_PC,V1_PD,P_matrix)
+    
+    x=zeros(T,1);
+    g=zeros(T,1);
+    gd=zeros(T,1);
+    rm=zeros(T,1);
 
-    expected_ss=zeros(T+1,2);
-    expected_shock=zeros(T+1,2);
-    for t=0:T
-        expected_ss(t+1,:)=[(prob_t_ss')*log(V1_PC),(prob_t_ss')*log(V1_PD)]; % Get the expected value of z, zm in ss path
-        expected_shock(t+1,:)=[(prob_t_shock')*log(V1_PC),(prob_t_shock')*log(V1_PD)]; % Get the expected value of z, zm in a "shocked" world
-        prob_t_ss=P_matrix'*prob_t_ss; % Update the probabilities using the transition matrix
-        prob_t_shock=P_matrix'*prob_t_shock; % Update the probabilities using the transition matrix
+    epsilon=randn(T,1);
+    eta=randn(T,1);
+    u=randn(T,1);
+
+    x(1)=0; % Unconditional expectation of x_t
+
+    for t=1:T-1
+        x(t+1)=rho*x(t)+phi_e*sigma*epsilon(t+1);
+        g(t+1)=mu+x(t)+sigma*eta(t+1);
+        gd(t+1)=mu_d+phi*x(t)+phi_d*sigma*u(t+1);
     end
 
-    diff_z=expected_shock(:,1)-expected_ss(:,1); % IRF is the difference in the conditional means
-    diff_zm=expected_shock(:,2)-expected_ss(:,2); % IRF is the difference in the conditional means
+    x_winsor=min(max(x,min(x_grid)),max(x_grid)); % I make sure that x is bewteen x_max and x_min from the Tauchen discretization
+    exp_z=interp1(x_grid,V1_PC,x_winsor); % I interpolate the value of the PC ratio
+    exp_zm=interp1(x_grid,V1_PD,x_winsor); % I interpolate the value of the PD ratio
+    z=log(exp_z);
+    zm=log(exp_zm);
+
+    [Rf]=function1_Rf(beta,mu,psi,theta,x_grid,sigma,P_matrix,V1_PC);
+    Rf_interpol=interp1(x_grid,Rf,x_winsor); % I interpolate the value of the risk-free rate
+    rf=log(1+Rf_interpol);
+
+    for t=1:T-1
+        rm(t+1)=log(exp_zm(t+1) + 1)-log(exp_zm(t))+gd(t+1); % log market return
+    end
+
+    t=(burn+1):(T-1);
+
+    rm_sim=rm(t);
+    rf_sim=rf(t);
+    zm_sim=zm(t);
+    gd_sim=gd(t);
+
+    T_months=length(rm_sim);
+    years=floor(T_months/12); % Number of full years
+    t_years=1:(12*years);
+
+    rm_reshape=reshape(rm_sim(t_years),12,years);
+    rf_reshape=reshape(rf_sim(t_years),12,years);
+    gd_reshape=reshape(gd_sim(t_years),12,years);
+
+    rm_annual=sum(rm_reshape,1)'; % Get annual log returns
+    rf_annual=sum(rf_reshape,1)'; % Get annual log returns
+
+    Rm_annual=exp(rm_annual)-1;
+    Rf_annual=exp(rf_annual)-1;
+
+    excess_annual=Rm_annual-Rf_annual;
+
+    PD_level=exp(zm_sim(t_years));
+    PD_reshape=reshape(PD_level,12,years);
+    PD_December=PD_reshape(12,:)'; % Keep one observation per year
+
+    PD_annual=zeros(years,1);
+
+    for i=1:years
+        gd_annual=gd_reshape(:,i);
+        growth_annual=exp(sum(gd_annual)); % Gross dividend growth over a year
+        sum_dividends = sum(exp(cumsum(gd_annual))); % Sum of dividend levels divided by the initial level
+        PD_annual(i)=PD_December(i)*growth_annual/sum_dividends; % Price divided by sum of dividends
+    end
+
+    pd_annual=log(PD_annual);
+
+    expected_excess=mean(excess_annual)*100;
+    expected_Rf=mean(Rf_annual)*100;
+    sigma_Rm=std(Rm_annual)*100;
+    sigma_Rf=std(Rf_annual)*100;
+
+    sigma_pd=std(pd_annual);
+    expected_pd=mean(pd_annual);
 end
 
-[diff2_z_eps,diff2_zm_eps] = function1_vfi2_irf_z_zm(T,x_ss,phi_e,sigma,x_grid,V1_PC,V1_PD,P_matrix);
+T=2000000;
+burn_pop=100000;
+rng(seed);
 
-figure(10)
-plot(t,diff2_z_eps(2:end),t,diff2_zm_eps(2:end),'LineWidth',2);
-grid on;xlabel('t');ylabel('Difference w.r.t. ss');
-legend('\Delta z_t (epsilon shock)','\Delta z_{m,t} (epsilon shock)','Location','Best');
-title('IRFs to an \epsilon shock (transition probabilities and expectations)');
-saveas(figure(10),'figure10_one.png')
+[expected_excess,expected_rf,sigma_rm,sigma_rf,sigma_pd,expected_pd] = function1_simulate_vfi_tauchen_table2(...
+    T,burn_pop,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,x_grid,V1_PC,V1_PD,P_matrix);
+
+fprintf('TABLE V MOMENTS (VFI (TAUCHEN) SIMULATION: POPULATION)\n');
+fprintf('E(Rm-Rf)=%9.3f\n',expected_excess);
+fprintf('E(Rf)= %11.3f\n',expected_rf);
+fprintf('sigma(Rm)=%8.3f\n',sigma_rm);
+fprintf('sigma(Rf)=%8.3f\n',sigma_rf);
+fprintf('sigma(p-d)=%7.3f\n',sigma_pd);
+fprintf('E(exp(p-d))=%7.3f\n',expected_pd);
+
+% MONTE CARLO
+num_sim=1000;
+Tmonths=840;
+burn_mc=100;
+
+expected_excess_mc=zeros(num_sim,1);
+expected_Rf_mc=zeros(num_sim,1);
+sigma_Rm_mc=zeros(num_sim,1);
+sigma_Rf_mc=zeros(num_sim,1);
+sigma_pd_mc=zeros(num_sim,1);
+expected_pd_mc=zeros(num_sim,1);
+
+for k=1:num_sim
+    [expected_excess,expected_Rf,sigma_Rm,sigma_Rf,sigma_pd,expected_pd]= ...
+        function1_simulate_vfi_tauchen_table2( ...
+        Tmonths+burn_mc,burn_mc,rho,phi_e,sigma,mu,mu_d,phi,phi_d,beta,psi,theta,x_grid,V1_PC,V1_PD,P_matrix);
+
+    expected_excess_mc(k)=expected_excess;
+    expected_Rf_mc(k)=expected_Rf;
+    sigma_Rm_mc(k)=sigma_Rm;
+    sigma_Rf_mc(k)=sigma_Rf;
+    sigma_pd_mc(k)=sigma_pd;
+    expected_pd_mc(k)=expected_pd;
+end
+
+mean_expected_excess_mc=mean(expected_excess_mc);
+mean_expected_rf_mc=mean(expected_Rf_mc);
+mean_sigma_rm_mc=mean(sigma_Rm_mc);
+mean_sigma_rf_mc=mean(sigma_Rf_mc);
+mean_sigma_pd_mc=mean(sigma_pd_mc);
+mean_expected_pd_mc=mean(expected_pd_mc);
+
+fprintf('TABLE V MOMENTS (VFI (TAUCHEN) SIMULATION: MONTE CARLO)\n');
+fprintf('E(Rm-Rf)=%10.3f\n',mean_expected_excess_mc);
+fprintf('E(Rf)= %12.3f\n',mean_expected_rf_mc);
+fprintf('sigma(Rm)=%9.3f\n',mean_sigma_rm_mc);
+fprintf('sigma(Rf)=%9.3f\n',mean_sigma_rf_mc);
+fprintf('sigma(p-d)=%8.3f\n',mean_sigma_pd_mc);
+fprintf('E(exp(p-d))=%7.3f\n',mean_expected_pd_mc);
